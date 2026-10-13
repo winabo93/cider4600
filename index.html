@@ -282,9 +282,25 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
         <input class="field" id="bVarIn" placeholder="Add a variety and press Enter" autocomplete="off" enterkeyhint="done">
       </div>
       <label class="lbl">Source<input class="field" id="bSource" placeholder="Where the apples came from" autocomplete="off"></label>
+      <fieldset>
+        <legend>Fermentation</legend>
+        <div class="chips" id="bFerment">
+          <button type="button" class="chip" data-f="wild" aria-pressed="true">Wild</button>
+          <button type="button" class="chip" data-f="yeast" aria-pressed="false">Added yeast</button>
+        </div>
+      </fieldset>
+      <label class="lbl" id="bYeastWrap" hidden>Yeast strain<input class="field" id="bYeast" placeholder="e.g. Lalvin EC-1118" autocomplete="off"></label>
       <div class="two">
         <label class="lbl">Volume (L)<input class="field" id="bVol" inputmode="decimal" placeholder="—" autocomplete="off"></label>
         <label class="lbl">Starting density g/mL<input class="field" id="bOG" inputmode="decimal" placeholder="1.050" autocomplete="off"></label>
+      </div>
+      <div class="box" id="bExpect" aria-live="polite" style="flex-direction:row;gap:10px">
+        <div class="stat" style="flex:1;padding:0;border:none;background:none">
+          <span class="k">Sugar at start</span><span class="v" id="bExpSugar">—</span>
+        </div>
+        <div class="stat" style="flex:1;padding:0;border:none;background:none">
+          <span class="k">Expected alcohol</span><span class="v" id="bExpAbv">—</span><span class="s" id="bExpNote">if fermented dry (to 1.000)</span>
+        </div>
       </div>
       <label class="lbl">Batch notes<textarea class="field" id="bNotes" rows="3" placeholder="Optional"></textarea></label>
       <button type="button" class="danger-btn" id="deleteBatch" hidden>Delete batch</button>
@@ -361,6 +377,12 @@ function estAbv(og, d) { if (og == null || d == null) return null; if (og <= d) 
 /* Starting density of a batch (batches saved with a starting sugar are converted back) */
 function batchOG(b) { if (!b) return null; if (b.og != null) return b.og; if (b.startSugar != null) return 1 + b.startSugar / (1000 * SUGAR_PER_POINT); return null; }
 function startSugar(b) { return sugarFromD(batchOG(b)); }
+/* Expected ABV if the cider ferments fully dry.
+   Assumed final density: wild 1.000, added (cultured) yeast 0.996 */
+var DRY_FG = { wild: 1.000, yeast: 0.996 };
+function fermentOf(b) { return b && b.ferment === 'yeast' ? 'yeast' : 'wild'; }
+function expectedAbv(og, ferment) { return og == null ? null : estAbv(og, DRY_FG[ferment === 'yeast' ? 'yeast' : 'wild']); }
+function fermentLabel(b) { return fermentOf(b) === 'yeast' ? 'Yeast' + (b.yeast ? ': ' + b.yeast : '') : 'Wild ferment'; }
 /* Density of an entry (entries saved with only sugar are converted back) */
 function entryD(e) { if (e.sg != null) return e.sg; if (e.sugar != null) return 1 + e.sugar / (1000 * SUGAR_PER_POINT); return null; }
 
@@ -482,7 +504,8 @@ function renderEntry(id) {
   if (b.startDate) { var diff = Math.round((parseYmd(e.date) - parseYmd(b.startDate)) / 86400000); if (diff >= 0) dayN = 'Day ' + diff + ' since start'; }
   var h = '<div class="head"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<span class="pill"><span class="sw" style="background:' + esc(batchColor(e.batchId)) + '"></span>' + esc(batchName(e.batchId)) + '</span>' +
-    (e.stage ? '<span class="pill">' + esc(e.stage) + '</span>' : '') + '</div>' +
+    (e.stage ? '<span class="pill">' + esc(e.stage) + '</span>' : '') +
+    (S.batches[e.batchId] ? '<span class="pill">' + esc(fermentLabel(b)) + '</span>' : '') + '</div>' +
     '<h1>' + esc(niceDate(e.date)) + '</h1><div style="font-size:14px;color:var(--muted)">' + esc([dayN, e.time].filter(Boolean).join(' · ')) + '</div></div>';
 
   var stats = [];
@@ -719,7 +742,8 @@ function renderBatchList() {
     var b = S.batches[id], meta = [];
     if (b.startDate) meta.push('Started ' + shortDate(b.startDate) + ' ' + parseYmd(b.startDate).getFullYear());
     if (b.volume != null) meta.push(b.volume + ' L');
-    if (batchOG(b) != null) meta.push('Start ' + fmtD(batchOG(b)) + ' (' + fmtSugar(startSugar(b)) + ')');
+    meta.push(fermentLabel(b));
+    if (batchOG(b) != null) meta.push('Start ' + fmtD(batchOG(b)) + ' (' + fmtSugar(startSugar(b)) + ')', 'expected ≈ ' + expectedAbv(batchOG(b), fermentOf(b)) + ' %');
     meta.push((counts[id] || 0) + ((counts[id] || 0) === 1 ? ' entry' : ' entries'));
     var v = b.varieties && b.varieties.length ? '<div class="meta">' + esc(b.varieties.join(', ')) + (b.source ? ' · ' + esc(b.source) : '') + '</div>' : (b.source ? '<div class="meta">' + esc(b.source) + '</div>' : '');
     return '<button class="batch-row" data-b="' + esc(id) + '"><span class="sw" style="background:' + esc(b.color || '#6E7C73') + '"></span><div style="flex:1;min-width:0"><div class="nm">' + esc(b.name) + '</div><div class="meta">' + esc(meta.join(' · ')) + '</div>' + v + '</div></button>';
@@ -734,7 +758,9 @@ function openBatch(id, fromForm) {
   var b = id ? S.batches[id] : null;
   var used = Object.keys(S.batches).map(function (k) { return S.batches[k].color; });
   var free = COLORS.filter(function (c) { return used.indexOf(c[1]) < 0; })[0];
-  B = { id: id, fromForm: fromForm, color: b ? b.color : (free || COLORS[0])[1], vars: b && b.varieties ? b.varieties.slice() : [] };
+  B = { id: id, fromForm: fromForm, color: b ? b.color : (free || COLORS[0])[1], vars: b && b.varieties ? b.varieties.slice() : [], ferment: fermentOf(b) };
+  $('bYeast').value = b ? (b.yeast || '') : '';
+  renderFerment();
   $('batchTitle').textContent = id ? 'Edit batch' : 'New batch';
   $('saveBatch').textContent = id ? 'Save' : 'Create';
   $('bName').value = b ? b.name : '';
@@ -742,6 +768,7 @@ function openBatch(id, fromForm) {
   $('bSource').value = b ? (b.source || '') : '';
   $('bVol').value = b && b.volume != null ? b.volume : '';
   $('bOG').value = b && batchOG(b) != null ? fmtD(batchOG(b)) : '';
+  syncExpect();
   $('bNotes').value = b ? (b.notes || '') : '';
   $('bVarIn').value = '';
   $('deleteBatch').hidden = !id;
@@ -749,6 +776,24 @@ function openBatch(id, fromForm) {
   openScreen('sBatch');
   if (!id) setTimeout(function () { $('bName').focus(); }, 250);
 }
+function syncExpect() {
+  var og = dens($('bOG').value), ok = og != null && og >= 0.98 && og <= 1.2;
+  var f = B ? B.ferment : 'wild';
+  $('bExpSugar').textContent = ok ? '≈ ' + fmtSugar(sugarFromD(og)) : '—';
+  $('bExpAbv').textContent = ok ? '≈ ' + expectedAbv(og, f) + ' %' : '—';
+  $('bExpNote').textContent = 'if fermented dry (to ' + DRY_FG[f].toFixed(3) + ', ' + (f === 'yeast' ? 'added yeast' : 'wild') + ')';
+}
+function renderFerment() {
+  $('bFerment').querySelectorAll('.chip').forEach(function (c) { c.setAttribute('aria-pressed', String(c.getAttribute('data-f') === B.ferment)); });
+  $('bYeastWrap').hidden = B.ferment !== 'yeast';
+  syncExpect();
+}
+$('bFerment').addEventListener('click', function (ev) {
+  var c = ev.target.closest('.chip'); if (!c) return;
+  B.ferment = c.getAttribute('data-f'); renderFerment();
+  if (B.ferment === 'yeast') $('bYeast').focus();
+});
+$('bOG').addEventListener('input', syncExpect);
 function renderColors() {
   $('bColors').innerHTML = COLORS.map(function (c) { return '<button type="button" class="swatch" style="background:' + c[1] + '" data-c="' + c[1] + '" aria-label="' + c[0] + '" aria-pressed="' + (B.color === c[1]) + '"></button>'; }).join('');
 }
@@ -774,7 +819,8 @@ $('saveBatch').onclick = function () {
   var data = {
     name: name, color: B.color, startDate: $('bDate').value || '',
     varieties: B.vars, source: $('bSource').value.trim(),
-    volume: num($('bVol').value), og: og, startSugar: sugarFromD(og), notes: $('bNotes').value.trim(),
+    volume: num($('bVol').value), og: og, startSugar: sugarFromD(og),
+    ferment: B.ferment, yeast: B.ferment === 'yeast' ? $('bYeast').value.trim() : '', notes: $('bNotes').value.trim(),
     updated: firebase.database.ServerValue.TIMESTAMP
   };
   var ref, p, fromForm = B.fromForm, isNew = !B.id;
