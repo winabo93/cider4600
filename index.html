@@ -233,13 +233,14 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
       </fieldset>
       <div class="box">
         <div class="two">
-          <label class="lbl">Sugar g/L<input class="field" id="fSugar" inputmode="decimal" placeholder="—" autocomplete="off"></label>
+          <label class="lbl">Density g/mL<input class="field" id="fSG" inputmode="decimal" placeholder="1.050" autocomplete="off"></label>
           <label class="lbl">Temp °C<input class="field" id="fTemp" inputmode="decimal" placeholder="—" autocomplete="off"></label>
         </div>
         <div class="two">
+          <label class="lbl">Sugar g/L<input class="field auto" id="fSugar" placeholder="—" readonly tabindex="-1"></label>
           <label class="lbl"><span>ABV %<button type="button" class="reset" id="rAbv" hidden>Auto</button></span><input class="field auto" id="fAbv" inputmode="decimal" placeholder="—" autocomplete="off"></label>
         </div>
-        <p class="hint" id="calcHint">ABV fills in from the sugar used since the batch started. Type over it to set your own.</p>
+        <p class="hint" id="calcHint">Sugar and ABV are calculated from the density. You can type over ABV.</p>
       </div>
       <label class="lbl">Notes<textarea class="field" id="fNotes" rows="5" placeholder="Smell, look, what you did…"></textarea></label>
       <div class="lbl">
@@ -283,7 +284,7 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
       <label class="lbl">Source<input class="field" id="bSource" placeholder="Where the apples came from" autocomplete="off"></label>
       <div class="two">
         <label class="lbl">Volume (L)<input class="field" id="bVol" inputmode="decimal" placeholder="—" autocomplete="off"></label>
-        <label class="lbl">Starting sugar g/L<input class="field" id="bSugar" inputmode="decimal" placeholder="e.g. 110" autocomplete="off"></label>
+        <label class="lbl">Starting density g/mL<input class="field" id="bOG" inputmode="decimal" placeholder="1.050" autocomplete="off"></label>
       </div>
       <label class="lbl">Batch notes<textarea class="field" id="bNotes" rows="3" placeholder="Optional"></textarea></label>
       <button type="button" class="danger-btn" id="deleteBatch" hidden>Delete batch</button>
@@ -339,6 +340,9 @@ function parseYmd(s) { var p = (s || '').split('-'); return new Date(+p[0], +p[1
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function num(v) { if (v == null || v === '') return null; var n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : null; }
 function fmtSugar(v) { return v == null ? '—' : (Math.round(v * 10) / 10) + ' g/L'; }
+function fmtD(v) { return v == null ? '—' : v.toFixed(3); }
+/* Density input: accepts 1.050 (g/mL) or 1050 (g/L, kg/m³) */
+function dens(v) { var n = num(v); if (n == null) return null; if (n > 500) n = n / 1000; return n; }
 function niceDate(s) { var d = parseYmd(s); return WD[d.getDay()] + ' ' + d.getDate() + ' ' + MONTHS[d.getMonth()]; }
 function shortDate(s) { var d = parseYmd(s); return d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3); }
 function batchColor(id) { var b = S.batches[id]; return b && b.color ? b.color : '#6E7C73'; }
@@ -348,11 +352,17 @@ function cldBig(url) { return url ? url.replace('/upload/', '/upload/c_limit,w_1
 var toastT;
 function toast(msg) { var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 2600); }
 
-/* ABV from sugar fermented: about 17 g/L of sugar gives 1 % ABV */
-var G_PER_ABV = 17;
-function estAbv(start, cur) { if (start == null || cur == null) return null; if (start <= cur) return 0; return Math.round((start - cur) / G_PER_ABV * 10) / 10; }
-/* Starting sugar of a batch (older batches saved with an OG are converted) */
-function startSugar(b) { if (!b) return null; if (b.startSugar != null) return b.startSugar; if (b.og != null && b.og > 1) return Math.round((b.og - 1) * 1000 * 2.62); return null; }
+/* Conversions from density (g/mL):
+   sugar g/L ≈ (density − 1) × 1000 × 2.62   (each 0.001 above water ≈ 2.62 g/L sugar)
+   ABV %     = (start density − current density) × 131.25 */
+var SUGAR_PER_POINT = 2.62;
+function sugarFromD(d) { if (d == null) return null; return d <= 1 ? 0 : Math.round((d - 1) * 1000 * SUGAR_PER_POINT); }
+function estAbv(og, d) { if (og == null || d == null) return null; if (og <= d) return 0; return Math.round((og - d) * 131.25 * 10) / 10; }
+/* Starting density of a batch (batches saved with a starting sugar are converted back) */
+function batchOG(b) { if (!b) return null; if (b.og != null) return b.og; if (b.startSugar != null) return 1 + b.startSugar / (1000 * SUGAR_PER_POINT); return null; }
+function startSugar(b) { return sugarFromD(batchOG(b)); }
+/* Density of an entry (entries saved with only sugar are converted back) */
+function entryD(e) { if (e.sg != null) return e.sg; if (e.sugar != null) return 1 + e.sugar / (1000 * SUGAR_PER_POINT); return null; }
 
 function entryList() {
   return Object.keys(S.entries).map(function (k) { var e = S.entries[k]; e.id = k; return e; });
@@ -436,6 +446,7 @@ var ICON_SG = '<svg viewBox="0 0 24 24" fill="none" stroke="#9DABA2" stroke-widt
 
 function summary(e) {
   var p = [];
+  if (e.sg != null) p.push(fmtD(e.sg) + ' g/mL');
   if (e.sugar != null) p.push(fmtSugar(e.sugar));
   if (e.temp != null) p.push(e.temp + ' °C');
   if (e.abv != null) p.push('ABV ≈ ' + e.abv + ' %');
@@ -475,9 +486,10 @@ function renderEntry(id) {
     '<h1>' + esc(niceDate(e.date)) + '</h1><div style="font-size:14px;color:var(--muted)">' + esc([dayN, e.time].filter(Boolean).join(' · ')) + '</div></div>';
 
   var stats = [];
-  var st = startSugar(b);
-  if (e.sugar != null) stats.push(['Sugar', fmtSugar(e.sugar), st != null ? 'started at ' + fmtSugar(st) : '']);
-  if (e.abv != null) stats.push(['ABV' + (e.abvManual ? '' : ' (est.)'), e.abv + ' %', e.abvManual ? 'entered' : 'from sugar used']);
+  var og = batchOG(b);
+  if (e.sg != null) stats.push(['Density', fmtD(e.sg), og != null ? 'start ' + fmtD(og) + ' g/mL' : 'g/mL']);
+  if (e.abv != null) stats.push(['ABV' + (e.abvManual ? '' : ' (est.)'), e.abv + ' %', e.abvManual ? 'entered' : 'from density drop']);
+  if (e.sugar != null) stats.push(['Sugar' + (e.sg != null ? ' (est.)' : ''), (e.sg != null ? '≈ ' : '') + fmtSugar(e.sugar), e.sg != null ? 'from density' : '']);
   if (e.temp != null) stats.push(['Temperature', e.temp + ' °C', '']);
   if (stats.length) h += '<section class="stats" aria-label="Readings">' + stats.map(function (s) {
     return '<div class="stat"><span class="k">' + esc(s[0]) + '</span><span class="v">' + esc(s[1]) + '</span>' + (s[2] ? '<span class="s">' + esc(s[2]) + '</span>' : '') + '</div>';
@@ -503,25 +515,25 @@ $('lightbox').addEventListener('click', function (ev) { if (ev.target === this) 
 
 function chartHtml(batchId, curId) {
   var b = S.batches[batchId] || {};
-  var pts = entryList().filter(function (e) { return e.batchId === batchId && e.sugar != null; }).sort(sortByWhen)
-    .map(function (e) { return { t: parseYmd(e.date).getTime() + (e.time ? (+e.time.slice(0, 2) * 60 + +e.time.slice(3, 5)) * 60000 : 0), v: e.sugar, d: e.date, cur: e.id === curId }; });
-  var st = startSugar(b);
+  var pts = entryList().filter(function (e) { return e.batchId === batchId && entryD(e) != null; }).sort(sortByWhen)
+    .map(function (e) { return { t: parseYmd(e.date).getTime() + (e.time ? (+e.time.slice(0, 2) * 60 + +e.time.slice(3, 5)) * 60000 : 0), v: entryD(e), d: e.date, cur: e.id === curId }; });
+  var st = batchOG(b);
   if (st != null && b.startDate && !(pts.length && pts[0].d <= b.startDate && pts[0].v === st)) pts.unshift({ t: parseYmd(b.startDate).getTime(), v: st, d: b.startDate, og: true });
   if (pts.length < 2) return '';
   var W = 320, H = 90, P = 8;
   var t0 = pts[0].t, t1 = pts[pts.length - 1].t, vmin = Infinity, vmax = -Infinity;
   pts.forEach(function (p) { vmin = Math.min(vmin, p.v); vmax = Math.max(vmax, p.v); });
-  if (vmax - vmin < 4) { vmax += 2; vmin -= 2; }
+  if (vmax - vmin < 0.004) { vmax += 0.002; vmin -= 0.002; }
   function X(t) { return t1 === t0 ? W / 2 : P + (t - t0) / (t1 - t0) * (W - 2 * P); }
   function Y(v) { return P + (vmax - v) / (vmax - vmin) * (H - 2 * P); }
   var line = pts.map(function (p) { return X(p.t).toFixed(1) + ',' + Y(p.v).toFixed(1); }).join(' ');
   var col = batchColor(batchId);
   var dots = pts.map(function (p) { return '<circle cx="' + X(p.t).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="' + (p.cur ? 5 : 3.5) + '" fill="' + (p.cur ? '#E7EDE8' : esc(col)) + '"></circle>'; }).join('');
   var first = pts[0], last = pts[pts.length - 1];
-  var label = 'Sugar from ' + fmtSugar(first.v) + ' on ' + shortDate(first.d) + ' to ' + fmtSugar(last.v) + ' on ' + shortDate(last.d);
-  return '<section class="sect"><h3>Sugar this batch</h3><div class="card chart" style="padding:14px 16px">' +
+  var label = 'Density from ' + fmtD(first.v) + ' on ' + shortDate(first.d) + ' to ' + fmtD(last.v) + ' on ' + shortDate(last.d);
+  return '<section class="sect"><h3>Density this batch</h3><div class="card chart" style="padding:14px 16px">' +
     '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '"><polyline points="' + line + '" fill="none" stroke="' + esc(col) + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>' + dots + '</svg>' +
-    '<div class="chart-axis"><span>' + esc(shortDate(first.d)) + ' · ' + fmtSugar(first.v) + (first.og ? ' (start)' : '') + '</span><span>' + esc(shortDate(last.d)) + ' · ' + fmtSugar(last.v) + '</span></div></div></section>';
+    '<div class="chart-axis"><span>' + esc(shortDate(first.d)) + ' · ' + fmtD(first.v) + (first.og ? ' (start)' : '') + '</span><span>' + esc(shortDate(last.d)) + ' · ' + fmtD(last.v) + '</span></div></div></section>';
 }
 
 $('entryEdit').onclick = function () { if (S.openEntry) openForm(S.openEntry); };
@@ -567,6 +579,7 @@ function openForm(id) {
   $('fDate').value = e ? e.date : S.sel;
   $('fTime').value = e ? (e.time || '') : pad(t.getHours()) + ':' + pad(t.getMinutes());
   refreshBatchSelect(F.batchId);
+  $('fSG').value = e && entryD(e) != null ? fmtD(entryD(e)) : '';
   $('fTemp').value = e && e.temp != null ? e.temp : '';
   $('fSugar').value = e && e.sugar != null ? e.sugar : '';
   $('fAbv').value = e && e.abv != null ? e.abv : '';
@@ -577,15 +590,16 @@ function openForm(id) {
 $('fab').onclick = function () { openForm(null); };
 
 function syncCalc() {
-  var cur = num($('fSugar').value), st = startSugar(S.batches[$('fBatch').value]);
-  if (!F.abvManual) { var a = estAbv(st, cur); $('fAbv').value = a == null ? '' : a; }
+  var d = dens($('fSG').value), og = batchOG(S.batches[$('fBatch').value]);
+  var s = sugarFromD(d); $('fSugar').value = s == null ? '' : s;
+  if (!F.abvManual) { var a = estAbv(og, d); $('fAbv').value = a == null ? '' : a; }
   $('fAbv').classList.toggle('auto', !F.abvManual);
   $('rAbv').hidden = !F.abvManual;
-  $('calcHint').textContent = st != null
-    ? 'ABV fills in from the sugar used since the start (' + fmtSugar(st) + '), about ' + G_PER_ABV + ' g/L per 1 %. Type over it to set your own.'
-    : 'Add a starting sugar to this batch to get ABV automatically.';
+  $('calcHint').textContent = og != null
+    ? 'Sugar and ABV are calculated from the density and the batch’s starting density (' + fmtD(og) + '). You can type over ABV.'
+    : 'Sugar is calculated from the density. Add a starting density to this batch to get ABV too.';
 }
-$('fSugar').addEventListener('input', syncCalc);
+$('fSG').addEventListener('input', syncCalc);
 $('fBatch').addEventListener('change', function () { F.batchId = this.value; syncCalc(); });
 $('fAbv').addEventListener('input', function () { F.abvManual = this.value !== ''; syncCalc(); });
 $('rAbv').onclick = function () { F.abvManual = false; syncCalc(); };
@@ -670,16 +684,17 @@ $('saveEntry').onclick = function () {
     time: $('fTime').value || '',
     batchId: batchId,
     stage: F.stage || '',
+    sg: dens($('fSG').value),
     temp: num($('fTemp').value),
-    sugar: num($('fSugar').value),
+    sugar: sugarFromD(dens($('fSG').value)),
     abv: num($('fAbv').value),
     abvManual: !!F.abvManual,
-    sg: null, sugarManual: null,
+    sugarManual: null,
     notes: $('fNotes').value.trim(),
     photos: F.photos,
     updated: firebase.database.ServerValue.TIMESTAMP
   };
-  if (data.sugar != null && (data.sugar < 0 || data.sugar > 400)) { toast('Sugar should be in g/L, between 0 and 400'); return; }
+  if (data.sg != null && (data.sg < 0.98 || data.sg > 1.2)) { toast('Density looks off — use 1.045 or 1045'); return; }
   var p, isNew = !F.id;
   if (isNew) { data.created = firebase.database.ServerValue.TIMESTAMP; p = db.ref('entries').push(data); }
   else p = db.ref('entries/' + F.id).update(data);
@@ -704,7 +719,7 @@ function renderBatchList() {
     var b = S.batches[id], meta = [];
     if (b.startDate) meta.push('Started ' + shortDate(b.startDate) + ' ' + parseYmd(b.startDate).getFullYear());
     if (b.volume != null) meta.push(b.volume + ' L');
-    if (startSugar(b) != null) meta.push('Start ' + fmtSugar(startSugar(b)));
+    if (batchOG(b) != null) meta.push('Start ' + fmtD(batchOG(b)) + ' (' + fmtSugar(startSugar(b)) + ')');
     meta.push((counts[id] || 0) + ((counts[id] || 0) === 1 ? ' entry' : ' entries'));
     var v = b.varieties && b.varieties.length ? '<div class="meta">' + esc(b.varieties.join(', ')) + (b.source ? ' · ' + esc(b.source) : '') + '</div>' : (b.source ? '<div class="meta">' + esc(b.source) + '</div>' : '');
     return '<button class="batch-row" data-b="' + esc(id) + '"><span class="sw" style="background:' + esc(b.color || '#6E7C73') + '"></span><div style="flex:1;min-width:0"><div class="nm">' + esc(b.name) + '</div><div class="meta">' + esc(meta.join(' · ')) + '</div>' + v + '</div></button>';
@@ -726,7 +741,7 @@ function openBatch(id, fromForm) {
   $('bDate').value = b ? (b.startDate || '') : ($('sForm').classList.contains('open') ? $('fDate').value : ymd(new Date()));
   $('bSource').value = b ? (b.source || '') : '';
   $('bVol').value = b && b.volume != null ? b.volume : '';
-  $('bSugar').value = b && startSugar(b) != null ? startSugar(b) : '';
+  $('bOG').value = b && batchOG(b) != null ? fmtD(batchOG(b)) : '';
   $('bNotes').value = b ? (b.notes || '') : '';
   $('bVarIn').value = '';
   $('deleteBatch').hidden = !id;
@@ -754,12 +769,12 @@ $('saveBatch').onclick = function () {
   addVar();
   var name = $('bName').value.trim();
   if (!name) { toast('Give the batch a name'); $('bName').focus(); return; }
-  var ss = num($('bSugar').value);
-  if (ss != null && (ss < 0 || ss > 400)) { toast('Starting sugar should be in g/L, between 0 and 400'); return; }
+  var og = dens($('bOG').value);
+  if (og != null && (og < 0.98 || og > 1.2)) { toast('Starting density looks off — use 1.050 or 1050'); return; }
   var data = {
     name: name, color: B.color, startDate: $('bDate').value || '',
     varieties: B.vars, source: $('bSource').value.trim(),
-    volume: num($('bVol').value), startSugar: ss, og: null, notes: $('bNotes').value.trim(),
+    volume: num($('bVol').value), og: og, startSugar: sugarFromD(og), notes: $('bNotes').value.trim(),
     updated: firebase.database.ServerValue.TIMESTAMP
   };
   var ref, p, fromForm = B.fromForm, isNew = !B.id;
