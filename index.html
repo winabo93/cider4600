@@ -152,6 +152,28 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
 .toast.show{opacity:1}
 .chart svg{display:block;width:100%;height:auto}
 .chart-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+.sub{font-weight:400;font-size:12px;color:var(--faint)}
+.chip .sw{margin-right:8px}
+.chip.b{display:inline-flex;align-items:center}
+.chip.b[aria-pressed=true] .sw{background:var(--bg)!important}
+.chip.new{border-style:dashed;border-color:var(--accent);color:var(--accent);background:transparent;font-weight:600}
+.rd{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.rd-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:15px;color:var(--text)}
+.rd-h .og{margin-left:auto;font-size:12px;color:var(--muted);font-weight:500}
+.three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.three .field{padding:0 10px}
+.calc{height:46px;border-radius:12px;border:1px dashed var(--border-strong);display:flex;align-items:center;padding:0 10px;font-size:15px;color:var(--text);font-weight:500}
+.rtable{display:grid;grid-template-columns:1.5fr repeat(3,minmax(0,1fr));gap:8px 6px;align-items:center;font-size:12px;color:var(--muted);font-weight:600;padding:14px}
+.rtable .c{color:var(--text);font-family:var(--display);font-size:16px;font-weight:700}
+.rtable .n{display:flex;align-items:flex-start;gap:6px;color:var(--text);font-size:13px;min-width:0}
+.rtable .n span:last-child{line-height:1.3}
+.chart-top{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.chart-top label{font-size:13px;color:var(--muted);font-weight:600}
+.chart-top select{flex:1;min-width:0;height:44px;font-weight:600}
+.series{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.series button{height:40px;padding:0 12px;border-radius:999px;border:1px solid var(--muted);background:var(--surface2);color:var(--text);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:8px}
+.series button[aria-pressed=false]{opacity:.5;background:transparent;border-color:var(--border)}
+.series svg{width:22px;height:6px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 </style>
 </head>
@@ -220,31 +242,23 @@ legend{font-size:13px;font-weight:600;color:var(--muted);padding:0;margin-bottom
         <label class="lbl">Date<input type="date" class="field" id="fDate"></label>
         <label class="lbl">Time<input type="time" class="field" id="fTime"></label>
       </div>
-      <div class="lbl">
-        <label for="fBatch">Batch</label>
-        <div style="display:flex;gap:8px">
-          <select class="field" id="fBatch" style="flex:1;min-width:0"></select>
-          <button type="button" class="sec-btn" id="fAddBatch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Batch</button>
-        </div>
-      </div>
+      <fieldset>
+        <legend>Batches — tap to add or remove</legend>
+        <div class="chips" id="fBatches"></div>
+      </fieldset>
       <fieldset>
         <legend>Stage</legend>
         <div class="chips" id="fStages"></div>
       </fieldset>
-      <div class="box">
-        <div class="two">
-          <label class="lbl">Density g/mL<input class="field" id="fSG" inputmode="decimal" placeholder="1.050" autocomplete="off"></label>
-          <label class="lbl">Temp °C<input class="field" id="fTemp" inputmode="decimal" placeholder="—" autocomplete="off"></label>
-        </div>
-        <div class="two">
-          <label class="lbl">Sugar g/L<input class="field auto" id="fSugar" placeholder="—" readonly tabindex="-1"></label>
-          <label class="lbl"><span>ABV %<button type="button" class="reset" id="rAbv" hidden>Auto</button></span><input class="field auto" id="fAbv" inputmode="decimal" placeholder="—" autocomplete="off"></label>
-        </div>
-        <p class="hint" id="calcHint">Sugar and ABV are calculated from the density. You can type over ABV.</p>
-      </div>
-      <label class="lbl">Notes<textarea class="field" id="fNotes" rows="5" placeholder="Smell, look, what you did…"></textarea></label>
       <div class="lbl">
-        <span>Photos</span>
+        <span>Readings per batch</span>
+        <div id="fReadings" style="display:flex;flex-direction:column;gap:10px"></div>
+        <p class="hint">Enter density (1.050 or 1050). Sugar and ABV are calculated per batch from its starting density. You can type over ABV.</p>
+      </div>
+      <label class="lbl"><span>Temp °C <span class="sub">shared</span></span><input class="field" id="fTemp" inputmode="decimal" placeholder="—" autocomplete="off"></label>
+      <label class="lbl"><span>Notes <span class="sub">shared</span></span><textarea class="field" id="fNotes" rows="5" placeholder="Smell, look, what you did…"></textarea></label>
+      <div class="lbl">
+        <span>Photos <span class="sub">shared</span></span>
         <div class="photos" id="fPhotos"></div>
         <input type="file" id="fFile" accept="image/*" multiple class="sr" tabindex="-1">
       </div>
@@ -340,12 +354,6 @@ S.view = new Date(now.getFullYear(), now.getMonth(), 1);
 S.sel = ymd(now);
 try { S.filter = localStorage.getItem('cider.filter') || 'all'; } catch (e) {}
 
-db.ref('batches').on('value', function (s) { S.batches = s.val() || {}; renderAll(); }, dbErr);
-db.ref('entries').on('value', function (s) { S.entries = s.val() || {}; renderAll(); }, dbErr);
-db.ref('.info/connected').on('value', function (s) {
-  var c = $('conn'); var on = !!s.val();
-  c.classList.toggle('on', on); c.title = on ? 'Connected' : 'Offline'; c.setAttribute('aria-label', on ? 'Connected' : 'Offline');
-});
 function dbErr(e) { toast('Database error: ' + e.message); }
 
 /* ---------- Helpers ---------- */
@@ -386,6 +394,23 @@ function fermentLabel(b) { return fermentOf(b) === 'yeast' ? 'Yeast' + (b.yeast 
 /* Density of an entry (entries saved with only sugar are converted back) */
 function entryD(e) { if (e.sg != null) return e.sg; if (e.sugar != null) return 1 + e.sugar / (1000 * SUGAR_PER_POINT); return null; }
 
+/* An entry can cover several batches: batchIds = [..], readings = { batchId: {sg, abv, abvManual} }.
+   Older entries have a single batchId and the reading on the entry itself. */
+function eBatches(e) { if (e.batchIds && e.batchIds.length) return e.batchIds; return e.batchId ? [e.batchId] : []; }
+function hasBatch(e, id) { return eBatches(e).indexOf(id) >= 0; }
+function eReading(e, id) {
+  if (e.batchIds && e.batchIds.length) return (e.readings && e.readings[id]) || {};
+  return e.batchId === id ? { sg: entryD(e), abv: e.abv, abvManual: e.abvManual } : {};
+}
+function rD(r) { return r.sg != null ? r.sg : (r.sugar != null ? 1 + r.sugar / (1000 * SUGAR_PER_POINT) : null); }
+function rAbv(r, batchId) {
+  if (r.abvManual && r.abv != null) return r.abv;
+  var a = estAbv(batchOG(S.batches[batchId]), rD(r));
+  return a != null ? a : (r.abv != null ? r.abv : null);
+}
+function shortName(id) { var n = batchName(id); return n.length > 16 ? n.slice(0, 15) + '…' : n; }
+function tsOf(e) { return parseYmd(e.date).getTime() + (e.time ? (+e.time.slice(0, 2) * 60 + +e.time.slice(3, 5)) * 60000 : 0); }
+
 function entryList() {
   return Object.keys(S.entries).map(function (k) { var e = S.entries[k]; e.id = k; return e; });
 }
@@ -405,7 +430,10 @@ function renderAll() {
   if ($('sEntry').classList.contains('open') && S.openEntry) {
     if (S.entries[S.openEntry]) renderEntry(S.openEntry); else closeScreen('sEntry');
   }
-  if ($('sForm').classList.contains('open')) refreshBatchSelect();
+  if ($('sForm').classList.contains('open') && F) {
+    F.sel = F.sel.filter(function (id) { return S.batches[id]; });
+    renderFormBatches(); renderReadings();
+  }
 }
 
 function renderFilter() {
@@ -422,7 +450,7 @@ $('filter').addEventListener('change', function () {
 });
 
 function visibleEntries() {
-  return entryList().filter(function (e) { return S.filter === 'all' || e.batchId === S.filter; });
+  return entryList().filter(function (e) { return S.filter === 'all' || hasBatch(e, S.filter); });
 }
 
 function renderCalendar() {
@@ -438,7 +466,7 @@ function renderCalendar() {
   for (var i = 0; i < total; i++) {
     var d = new Date(y, m, 1 - offset + i), key = ymd(d), muted = d.getMonth() !== m;
     var list = byDate[key] || [];
-    var cols = []; list.forEach(function (e) { var c = batchColor(e.batchId); if (cols.indexOf(c) < 0) cols.push(c); });
+    var cols = []; list.forEach(function (e) { eBatches(e).forEach(function (bid) { if (S.filter !== 'all' && bid !== S.filter) return; var c = batchColor(bid); if (cols.indexOf(c) < 0) cols.push(c); }); });
     var cls = 'day' + (muted ? ' muted' : '') + (key === today ? ' today' : '') + (key === S.sel ? ' sel' : '');
     var dots = cols.slice(0, 3).map(function (c) { return '<span class="dot" style="background:' + esc(c) + '"></span>'; }).join('');
     var lab = d.getDate() + ' ' + MONTHS[d.getMonth()] + (list.length ? ', ' + list.length + (list.length === 1 ? ' entry' : ' entries') : '');
@@ -447,8 +475,8 @@ function renderCalendar() {
   $('grid').innerHTML = h;
 
   var used = {};
-  visibleEntries().forEach(function (e) { var d = parseYmd(e.date); if (d.getFullYear() === y && d.getMonth() === m) used[e.batchId] = 1; });
-  $('legend').innerHTML = Object.keys(used).filter(function (id) { return S.batches[id]; }).map(function (id) {
+  visibleEntries().forEach(function (e) { var d = parseYmd(e.date); if (d.getFullYear() === y && d.getMonth() === m) eBatches(e).forEach(function (bid) { used[bid] = 1; }); });
+  $('legend').innerHTML = Object.keys(used).filter(function (id) { return S.batches[id] && (S.filter === 'all' || id === S.filter); }).map(function (id) {
     return '<span><span class="sw" style="background:' + esc(batchColor(id)) + '"></span>' + esc(batchName(id)) + '</span>';
   }).join('');
 }
@@ -467,14 +495,21 @@ var ICON_NOTE = '<svg viewBox="0 0 24 24" fill="none" stroke="#9DABA2" stroke-wi
 var ICON_SG = '<svg viewBox="0 0 24 24" fill="none" stroke="#9DABA2" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M10 2h4"/><path d="M12 2v6"/><rect x="9" y="8" width="6" height="14" rx="3"/><path d="M9 14h6"/></svg>';
 
 function summary(e) {
-  var p = [];
-  if (e.sg != null) p.push(fmtD(e.sg) + ' g/mL');
-  if (e.sugar != null) p.push(fmtSugar(e.sugar));
-  if (e.temp != null) p.push(e.temp + ' °C');
-  if (e.abv != null) p.push('ABV ≈ ' + e.abv + ' %');
+  var p = [], ids = eBatches(e);
+  if (ids.length === 1) {
+    var r = eReading(e, ids[0]), d = rD(r), a = rAbv(r, ids[0]);
+    if (d != null) p.push(fmtD(d), fmtSugar(sugarFromD(d)));
+    if (e.temp != null) p.push(e.temp + ' °C');
+    if (a != null) p.push('ABV ≈ ' + a.toFixed(1) + ' %');
+  } else {
+    var ds = ids.map(function (id) { var d = rD(eReading(e, id)); return d != null ? fmtD(d) : null; }).filter(Boolean);
+    if (ds.length) p.push(ds.join(' / '));
+    if (e.temp != null) p.push(e.temp + ' °C');
+  }
   if (!p.length && e.notes) return e.notes;
   return p.join(' · ') || 'No readings';
 }
+function hasReading(e) { return eBatches(e).some(function (id) { return rD(eReading(e, id)) != null; }); }
 
 function renderDay() {
   $('dayTitle').textContent = niceDate(S.sel);
@@ -484,9 +519,12 @@ function renderDay() {
     return;
   }
   $('dayItems').innerHTML = list.map(function (e) {
-    var ph = e.photos && e.photos.length ? '<img src="' + esc(cldThumb(e.photos[0].url, 120)) + '" alt="" loading="lazy">' : (e.sugar != null ? ICON_SG : ICON_NOTE);
+    var ph = e.photos && e.photos.length ? '<img src="' + esc(cldThumb(e.photos[0].url, 120)) + '" alt="" loading="lazy">' : (hasReading(e) ? ICON_SG : ICON_NOTE);
+    var ids = eBatches(e);
+    var dots = ids.map(function (id) { return '<span class="sw" style="background:' + esc(batchColor(id)) + '"></span>'; }).join('');
+    var names = ids.length === 1 ? batchName(ids[0]) : ids.length + ' batches';
     return '<button class="entry-row" data-e="' + esc(e.id) + '"><div class="thumb">' + ph + '</div><div class="er-body">' +
-      '<div class="er-batch"><span class="sw" style="background:' + esc(batchColor(e.batchId)) + '"></span>' + esc(batchName(e.batchId)) + (e.time ? ' · ' + esc(e.time) : '') + '</div>' +
+      '<div class="er-batch">' + dots + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(names) + (e.time ? ' · ' + esc(e.time) : '') + '</span></div>' +
       '<div class="er-title">' + esc(e.stage || 'Entry') + '</div><div class="er-sub">' + esc(summary(e)) + '</div></div>' +
       '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6E7C73" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>';
   }).join('');
@@ -497,26 +535,47 @@ $('dayItems').addEventListener('click', function (ev) {
 });
 
 /* ---------- Entry detail ---------- */
+var METRICS = {
+  d: { name: 'Density', unit: 'g/mL', fmt: function (v) { return v.toFixed(3); } },
+  s: { name: 'Sugar', unit: 'g/L', fmt: function (v) { return String(Math.round(v)); } },
+  a: { name: 'ABV', unit: '%', fmt: function (v) { return v.toFixed(1); } },
+  t: { name: 'Temperature', unit: '°C', fmt: function (v) { return (Math.round(v * 10) / 10).toString(); } }
+};
+var DASHES = ['', '7 4', '2 4', '10 4 2 4', '4 3'];
+S.metric = 'd'; S.hidden = {};
+try { var m0 = localStorage.getItem('cider.metric'); if (METRICS[m0]) S.metric = m0; } catch (e) {}
+
 function renderEntry(id) {
   var e = S.entries[id]; if (!e) return;
-  var b = S.batches[e.batchId] || {};
+  var ids = eBatches(e);
+  var one = ids.length === 1 ? ids[0] : null;
+  var b = one ? (S.batches[one] || {}) : {};
   var dayN = '';
-  if (b.startDate) { var diff = Math.round((parseYmd(e.date) - parseYmd(b.startDate)) / 86400000); if (diff >= 0) dayN = 'Day ' + diff + ' since start'; }
-  var h = '<div class="head"><div style="display:flex;gap:8px;flex-wrap:wrap">' +
-    '<span class="pill"><span class="sw" style="background:' + esc(batchColor(e.batchId)) + '"></span>' + esc(batchName(e.batchId)) + '</span>' +
+  if (one && b.startDate) { var diff = Math.round((parseYmd(e.date) - parseYmd(b.startDate)) / 86400000); if (diff >= 0) dayN = 'Day ' + diff + ' since start'; }
+  var pills = ids.map(function (bid) { return '<span class="pill"><span class="sw" style="background:' + esc(batchColor(bid)) + '"></span>' + esc(batchName(bid)) + '</span>'; }).join('');
+  var h = '<div class="head"><div style="display:flex;gap:8px;flex-wrap:wrap">' + pills +
     (e.stage ? '<span class="pill">' + esc(e.stage) + '</span>' : '') +
-    (S.batches[e.batchId] ? '<span class="pill">' + esc(fermentLabel(b)) + '</span>' : '') + '</div>' +
-    '<h1>' + esc(niceDate(e.date)) + '</h1><div style="font-size:14px;color:var(--muted)">' + esc([dayN, e.time].filter(Boolean).join(' · ')) + '</div></div>';
+    (one && S.batches[one] ? '<span class="pill">' + esc(fermentLabel(b)) + '</span>' : '') + '</div>' +
+    '<h1>' + esc(niceDate(e.date)) + '</h1><div style="font-size:14px;color:var(--muted)">' +
+    esc([dayN, e.time, ids.length > 1 && e.temp != null ? e.temp + ' °C' : ''].filter(Boolean).join(' · ')) + '</div></div>';
 
-  var stats = [];
-  var og = batchOG(b);
-  if (e.sg != null) stats.push(['Density', fmtD(e.sg), og != null ? 'start ' + fmtD(og) + ' g/mL' : 'g/mL']);
-  if (e.abv != null) stats.push(['ABV' + (e.abvManual ? '' : ' (est.)'), e.abv + ' %', e.abvManual ? 'entered' : 'from density drop']);
-  if (e.sugar != null) stats.push(['Sugar' + (e.sg != null ? ' (est.)' : ''), (e.sg != null ? '≈ ' : '') + fmtSugar(e.sugar), e.sg != null ? 'from density' : '']);
-  if (e.temp != null) stats.push(['Temperature', e.temp + ' °C', '']);
-  if (stats.length) h += '<section class="stats" aria-label="Readings">' + stats.map(function (s) {
-    return '<div class="stat"><span class="k">' + esc(s[0]) + '</span><span class="v">' + esc(s[1]) + '</span>' + (s[2] ? '<span class="s">' + esc(s[2]) + '</span>' : '') + '</div>';
-  }).join('') + '</section>';
+  if (one) {
+    var r = eReading(e, one), d = rD(r), a = rAbv(r, one), og = batchOG(b), stats = [];
+    if (d != null) stats.push(['Density', fmtD(d), og != null ? 'start ' + fmtD(og) + ' g/mL' : 'g/mL']);
+    if (a != null) stats.push(['ABV' + (r.abvManual ? '' : ' (est.)'), a.toFixed(1) + ' %', r.abvManual ? 'entered' : 'from density drop']);
+    if (d != null) stats.push(['Sugar (est.)', '≈ ' + fmtSugar(sugarFromD(d)), 'from density']);
+    if (e.temp != null) stats.push(['Temperature', e.temp + ' °C', '']);
+    if (stats.length) h += '<section class="stats" aria-label="Readings">' + stats.map(function (s) {
+      return '<div class="stat"><span class="k">' + esc(s[0]) + '</span><span class="v">' + esc(s[1]) + '</span>' + (s[2] ? '<span class="s">' + esc(s[2]) + '</span>' : '') + '</div>';
+    }).join('') + '</section>';
+  } else if (ids.length) {
+    h += '<section class="sect" style="margin-top:0"><div class="card rtable" aria-label="Readings"><span>Batch</span><span>Density</span><span>Sugar</span><span>ABV</span>' +
+      ids.map(function (bid) {
+        var r = eReading(e, bid), d = rD(r), a = rAbv(r, bid);
+        return '<span class="n"><span class="sw" style="background:' + esc(batchColor(bid)) + '"></span><span>' + esc(batchName(bid)) + '</span></span>' +
+          '<span class="c">' + (d != null ? fmtD(d) : '—') + '</span><span class="c">' + (d != null ? sugarFromD(d) : '—') + '</span><span class="c">' + (a != null ? a.toFixed(1) + ' %' : '—') + '</span>';
+      }).join('') + '</div></section>';
+  }
 
   if (e.notes) h += '<section class="sect"><h3>Notes</h3><div class="card" style="padding:16px"><p class="notes">' + esc(e.notes) + '</p></div></section>';
 
@@ -526,38 +585,106 @@ function renderEntry(id) {
     }).join('') + '</div></section>';
   }
 
-  h += chartHtml(e.batchId, id);
+  h += '<section class="sect"><h3>Charts</h3><div class="card chart" style="padding:14px" id="chartBox"></div></section>';
   $('entryBody').innerHTML = h;
+  renderChart(e);
 }
+
+/* Points for one batch and metric, including the batch start for density, sugar and ABV */
+function seriesFor(bid, m, curId) {
+  var b = S.batches[bid] || {}, og = batchOG(b), pts = [];
+  entryList().filter(function (e) { return hasBatch(e, bid); }).forEach(function (e) {
+    var r = eReading(e, bid), d = rD(r), v = null;
+    if (m === 'd') v = d;
+    else if (m === 's') v = d != null ? sugarFromD(d) : null;
+    else if (m === 'a') v = d != null || r.abvManual ? rAbv(r, bid) : null;
+    else v = e.temp != null ? e.temp : null;
+    if (v != null) pts.push({ t: tsOf(e), v: v, d: e.date, cur: e.id === curId });
+  });
+  pts.sort(function (a, b) { return a.t - b.t; });
+  if (m !== 't' && og != null && b.startDate) {
+    var t0 = parseYmd(b.startDate).getTime();
+    if (!pts.length || pts[0].t > t0) pts.unshift({ t: t0, v: m === 'd' ? og : (m === 's' ? sugarFromD(og) : 0), d: b.startDate, start: true });
+  }
+  return pts;
+}
+
+function renderChart(e) {
+  var box = $('chartBox'); if (!box) return;
+  var ids = eBatches(e).filter(function (id) { return S.batches[id]; });
+  var m = S.metric, M = METRICS[m];
+  var opts = Object.keys(METRICS).map(function (k) { return '<option value="' + k + '"' + (k === m ? ' selected' : '') + '>' + METRICS[k].name + ' (' + METRICS[k].unit + ')</option>'; }).join('');
+  var h = '<div class="chart-top"><label for="metric">Chart</label><select class="field" id="metric">' + opts + '</select></div>';
+
+  var all = ids.map(function (id, i) { return { id: id, i: i, pts: seriesFor(id, m, e.id) }; });
+  var shown = all.filter(function (s) { return !S.hidden[s.id] && s.pts.length; });
+  var flat = []; shown.forEach(function (s) { s.pts.forEach(function (p) { flat.push(p); }); });
+
+  if (!flat.length) {
+    h += '<div class="empty" style="margin:4px 0">No ' + M.name.toLowerCase() + ' readings yet for ' + (ids.length > 1 ? 'these batches' : 'this batch') + '.</div>';
+  } else {
+    var W = 340, H = 200, L = 44, R = 8, T = 12, Bm = 28;
+    var t0 = Infinity, t1 = -Infinity, lo = Infinity, hi = -Infinity;
+    flat.forEach(function (p) { t0 = Math.min(t0, p.t); t1 = Math.max(t1, p.t); lo = Math.min(lo, p.v); hi = Math.max(hi, p.v); });
+    var span = hi - lo, minSpan = { d: 0.004, s: 10, a: 1, t: 2 }[m];
+    if (span < minSpan) { var mid = (hi + lo) / 2; lo = mid - minSpan / 2; hi = mid + minSpan / 2; }
+    else { lo -= span * 0.08; hi += span * 0.08; }
+    if ((m === 's' || m === 'a') && lo < 0) lo = 0;
+    var X = function (t) { return t1 === t0 ? L + (W - L - R) / 2 : L + (t - t0) / (t1 - t0) * (W - L - R); };
+    var Y = function (v) { return T + (hi - v) / (hi - lo) * (H - T - Bm); };
+    var svg = '';
+    [0, 0.5, 1].forEach(function (k) {
+      var v = hi - k * (hi - lo), y = Y(v).toFixed(1);
+      svg += '<line x1="' + L + '" y1="' + y + '" x2="' + (W - R) + '" y2="' + y + '" stroke="' + (k === 1 ? '#3C4A41' : '#2C3730') + '" stroke-width="1"></line>' +
+        '<text x="' + (L - 6) + '" y="' + (+y + 4) + '" text-anchor="end" font-size="11" fill="#9DABA2">' + M.fmt(v) + '</text>';
+    });
+    var dates = t1 === t0 ? [t0] : [t0, (t0 + t1) / 2, t1];
+    dates.forEach(function (t, i) {
+      var d = new Date(t), anchor = dates.length === 1 ? 'middle' : (i === 0 ? 'start' : (i === dates.length - 1 ? 'end' : 'middle'));
+      svg += '<text x="' + X(t).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '" font-size="11" fill="#9DABA2">' + d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0, 3) + '</text>';
+    });
+    shown.forEach(function (s) {
+      var col = batchColor(s.id), dash = DASHES[s.i % DASHES.length];
+      var line = s.pts.map(function (p) { return X(p.t).toFixed(1) + ',' + Y(p.v).toFixed(1); }).join(' ');
+      if (s.pts.length > 1) svg += '<polyline points="' + line + '" fill="none" stroke="' + esc(col) + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></polyline>';
+      s.pts.forEach(function (p) {
+        svg += p.cur
+          ? '<circle cx="' + X(p.t).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="5.5" fill="#101512" stroke="' + esc(col) + '" stroke-width="3"></circle>'
+          : '<circle cx="' + X(p.t).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="3.5" fill="' + esc(col) + '"></circle>';
+      });
+    });
+    var label = M.name + ' over time for ' + shown.map(function (s) { var a = s.pts[0], z = s.pts[s.pts.length - 1]; return batchName(s.id) + ' (' + M.fmt(a.v) + ' to ' + M.fmt(z.v) + ' ' + M.unit + ')'; }).join(', ');
+    h += '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' + svg + '</svg>';
+  }
+
+  if (ids.length) {
+    h += '<div class="series">' + all.map(function (s) {
+      var col = batchColor(s.id), dash = DASHES[s.i % DASHES.length];
+      return '<button type="button" data-series="' + esc(s.id) + '" aria-pressed="' + !S.hidden[s.id] + '"><svg viewBox="0 0 22 6" aria-hidden="true"><line x1="1" y1="3" x2="21" y2="3" stroke="' + esc(col) + '" stroke-width="3" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '></line></svg>' + esc(shortName(s.id)) + '</button>';
+    }).join('') + '</div>';
+  }
+  h += '<p class="hint" style="margin-top:10px">' + ({
+    d: 'Density falls as sugar ferments. The first point is the batch’s starting density.',
+    s: 'Sugar is calculated from density, so it follows the same shape. Less exact late in fermentation.',
+    a: 'ABV rises as density drops: (start − current) × 131.25.',
+    t: 'Temperature as logged on each entry.'
+  })[m] + ' The ringed point is this entry.</p>';
+  box.innerHTML = h;
+}
+
+$('entryBody').addEventListener('change', function (ev) {
+  if (ev.target.id !== 'metric') return;
+  S.metric = ev.target.value; try { localStorage.setItem('cider.metric', S.metric); } catch (e) {}
+  if (S.entries[S.openEntry]) renderChart(S.entries[S.openEntry]);
+});
 $('entryBody').addEventListener('click', function (ev) {
+  var sb = ev.target.closest('[data-series]');
+  if (sb) { var id = sb.getAttribute('data-series'); S.hidden[id] = !S.hidden[id]; if (S.entries[S.openEntry]) renderChart(S.entries[S.openEntry]); return; }
   var p = ev.target.closest('[data-big]'); if (!p) return;
   $('lbImg').src = p.getAttribute('data-big'); $('lightbox').classList.add('open');
 });
 $('lbClose').onclick = function () { $('lightbox').classList.remove('open'); $('lbImg').src = ''; };
 $('lightbox').addEventListener('click', function (ev) { if (ev.target === this) $('lbClose').onclick(); });
-
-function chartHtml(batchId, curId) {
-  var b = S.batches[batchId] || {};
-  var pts = entryList().filter(function (e) { return e.batchId === batchId && entryD(e) != null; }).sort(sortByWhen)
-    .map(function (e) { return { t: parseYmd(e.date).getTime() + (e.time ? (+e.time.slice(0, 2) * 60 + +e.time.slice(3, 5)) * 60000 : 0), v: entryD(e), d: e.date, cur: e.id === curId }; });
-  var st = batchOG(b);
-  if (st != null && b.startDate && !(pts.length && pts[0].d <= b.startDate && pts[0].v === st)) pts.unshift({ t: parseYmd(b.startDate).getTime(), v: st, d: b.startDate, og: true });
-  if (pts.length < 2) return '';
-  var W = 320, H = 90, P = 8;
-  var t0 = pts[0].t, t1 = pts[pts.length - 1].t, vmin = Infinity, vmax = -Infinity;
-  pts.forEach(function (p) { vmin = Math.min(vmin, p.v); vmax = Math.max(vmax, p.v); });
-  if (vmax - vmin < 0.004) { vmax += 0.002; vmin -= 0.002; }
-  function X(t) { return t1 === t0 ? W / 2 : P + (t - t0) / (t1 - t0) * (W - 2 * P); }
-  function Y(v) { return P + (vmax - v) / (vmax - vmin) * (H - 2 * P); }
-  var line = pts.map(function (p) { return X(p.t).toFixed(1) + ',' + Y(p.v).toFixed(1); }).join(' ');
-  var col = batchColor(batchId);
-  var dots = pts.map(function (p) { return '<circle cx="' + X(p.t).toFixed(1) + '" cy="' + Y(p.v).toFixed(1) + '" r="' + (p.cur ? 5 : 3.5) + '" fill="' + (p.cur ? '#E7EDE8' : esc(col)) + '"></circle>'; }).join('');
-  var first = pts[0], last = pts[pts.length - 1];
-  var label = 'Density from ' + fmtD(first.v) + ' on ' + shortDate(first.d) + ' to ' + fmtD(last.v) + ' on ' + shortDate(last.d);
-  return '<section class="sect"><h3>Density this batch</h3><div class="card chart" style="padding:14px 16px">' +
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '"><polyline points="' + line + '" fill="none" stroke="' + esc(col) + '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></polyline>' + dots + '</svg>' +
-    '<div class="chart-axis"><span>' + esc(shortDate(first.d)) + ' · ' + fmtD(first.v) + (first.og ? ' (start)' : '') + '</span><span>' + esc(shortDate(last.d)) + ' · ' + fmtD(last.v) + '</span></div></div></section>';
-}
 
 $('entryEdit').onclick = function () { if (S.openEntry) openForm(S.openEntry); };
 $('entryDelete').onclick = function () {
@@ -567,17 +694,67 @@ $('entryDelete').onclick = function () {
 };
 
 /* ---------- Entry form ---------- */
-var F = null; // form state
+var F = null; // form state: sel = chosen batch ids, read = { batchId: { sg: text, abv: text, abvManual } }
 
-function refreshBatchSelect(selectId) {
-  var sel = $('fBatch'), cur = selectId || sel.value || (F && F.batchId) || '';
+function renderFormBatches() {
   var ids = sortedBatchIds();
-  if (!ids.length) { sel.innerHTML = '<option value="">No batches yet — add one →</option>'; return; }
-  sel.innerHTML = ids.map(function (id) { return '<option value="' + esc(id) + '">' + esc(S.batches[id].name) + '</option>'; }).join('');
-  if (cur && S.batches[cur]) sel.value = cur;
-  else if (S.filter !== 'all' && S.batches[S.filter]) sel.value = S.filter;
-  if (F) F.batchId = sel.value;
+  $('fBatches').innerHTML = ids.map(function (id) {
+    var on = F.sel.indexOf(id) >= 0, col = batchColor(id);
+    return '<button type="button" class="chip b" data-b="' + esc(id) + '" aria-pressed="' + on + '"' +
+      (on ? ' style="background:' + esc(col) + ';border-color:' + esc(col) + ';color:#101512"' : '') +
+      '><span class="sw" style="background:' + esc(col) + '"></span>' + esc(S.batches[id].name) + '</button>';
+  }).join('') + '<button type="button" class="chip new" id="fAddBatch">+ New batch</button>';
+  $('saveEntry').textContent = F.uploads.length ? 'Uploading…' : (F.sel.length > 1 ? 'Save (' + F.sel.length + ')' : 'Save');
 }
+$('fBatches').addEventListener('click', function (ev) {
+  if (ev.target.closest('#fAddBatch')) { openBatch(null, true); return; }
+  var c = ev.target.closest('[data-b]'); if (!c) return;
+  var id = c.getAttribute('data-b'), i = F.sel.indexOf(id);
+  if (i >= 0) F.sel.splice(i, 1); else { F.sel.push(id); if (!F.read[id]) F.read[id] = { sg: '', abv: '', abvManual: false }; }
+  renderFormBatches(); renderReadings();
+});
+
+function renderReadings() {
+  if (!F.sel.length) {
+    $('fReadings').innerHTML = '<div class="empty">' + (Object.keys(S.batches).length ? 'Pick at least one batch above.' : 'Create a batch first with “+ New batch”.') + '</div>';
+    return;
+  }
+  $('fReadings').innerHTML = F.sel.map(function (id) {
+    var r = F.read[id], og = batchOG(S.batches[id]);
+    return '<div class="rd" data-row="' + esc(id) + '">' +
+      '<div class="rd-h"><span class="sw" style="background:' + esc(batchColor(id)) + '"></span>' + esc(batchName(id)) +
+      '<span class="og">' + (og != null ? 'start ' + fmtD(og) : 'no start density') + '</span></div>' +
+      '<div class="three">' +
+      '<label class="lbl">Density<input class="field" data-k="sg" inputmode="decimal" placeholder="1.050" autocomplete="off" value="' + esc(r.sg) + '"></label>' +
+      '<div class="lbl"><span>Sugar</span><div class="calc" data-out="sugar">—</div></div>' +
+      '<label class="lbl"><span>ABV %<button type="button" class="reset" data-reset hidden>Auto</button></span><input class="field auto" data-k="abv" inputmode="decimal" placeholder="—" autocomplete="off" value="' + esc(r.abv) + '"></label>' +
+      '</div></div>';
+  }).join('');
+  F.sel.forEach(syncRow);
+}
+/* Update one row's calculated values without re-rendering (keeps the keyboard open) */
+function syncRow(id) {
+  var row = $('fReadings').querySelector('[data-row="' + id + '"]'); if (!row) return;
+  var r = F.read[id], d = dens(r.sg), og = batchOG(S.batches[id]);
+  var s = sugarFromD(d);
+  row.querySelector('[data-out="sugar"]').textContent = s == null ? '—' : s + ' g/L';
+  var abvIn = row.querySelector('[data-k="abv"]');
+  if (!r.abvManual) { var a = estAbv(og, d); r.abv = a == null ? '' : String(a); abvIn.value = r.abv; }
+  abvIn.classList.toggle('auto', !r.abvManual);
+  row.querySelector('[data-reset]').hidden = !r.abvManual;
+}
+$('fReadings').addEventListener('input', function (ev) {
+  var k = ev.target.getAttribute('data-k'); if (!k) return;
+  var id = ev.target.closest('[data-row]').getAttribute('data-row'), r = F.read[id];
+  if (k === 'sg') r.sg = ev.target.value;
+  else { r.abv = ev.target.value; r.abvManual = ev.target.value !== ''; }
+  syncRow(id);
+});
+$('fReadings').addEventListener('click', function (ev) {
+  if (!ev.target.closest('[data-reset]')) return;
+  var id = ev.target.closest('[data-row]').getAttribute('data-row');
+  F.read[id].abvManual = false; syncRow(id);
+});
 
 function renderStages() {
   $('fStages').innerHTML = STAGES.map(function (s) { return '<button type="button" class="chip" aria-pressed="' + (F.stage === s) + '" data-s="' + esc(s) + '">' + esc(s) + '</button>'; }).join('');
@@ -594,38 +771,30 @@ function openForm(id) {
     stage: e ? (e.stage || '') : 'Observation',
     photos: e && e.photos ? e.photos.slice() : [],
     uploads: [],
-    abvManual: e ? !!e.abvManual : false,
-    batchId: e ? e.batchId : null
+    sel: [], read: {}
   };
+  if (e) {
+    eBatches(e).forEach(function (bid) {
+      if (!S.batches[bid]) return;
+      var r = eReading(e, bid), d = rD(r);
+      F.sel.push(bid);
+      F.read[bid] = { sg: d != null ? fmtD(d) : '', abv: r.abv != null ? String(r.abv) : '', abvManual: !!r.abvManual };
+    });
+  } else {
+    var ids = sortedBatchIds();
+    var pre = S.filter !== 'all' && S.batches[S.filter] ? S.filter : (ids.length === 1 ? ids[0] : null);
+    if (pre) { F.sel.push(pre); F.read[pre] = { sg: '', abv: '', abvManual: false }; }
+  }
   $('formTitle').textContent = id ? 'Edit entry' : 'New entry';
   var t = new Date();
   $('fDate').value = e ? e.date : S.sel;
   $('fTime').value = e ? (e.time || '') : pad(t.getHours()) + ':' + pad(t.getMinutes());
-  refreshBatchSelect(F.batchId);
-  $('fSG').value = e && entryD(e) != null ? fmtD(entryD(e)) : '';
   $('fTemp').value = e && e.temp != null ? e.temp : '';
-  $('fSugar').value = e && e.sugar != null ? e.sugar : '';
-  $('fAbv').value = e && e.abv != null ? e.abv : '';
   $('fNotes').value = e ? (e.notes || '') : '';
-  renderStages(); renderFormPhotos(); syncCalc();
+  renderFormBatches(); renderReadings(); renderStages(); renderFormPhotos();
   openScreen('sForm');
 }
 $('fab').onclick = function () { openForm(null); };
-
-function syncCalc() {
-  var d = dens($('fSG').value), og = batchOG(S.batches[$('fBatch').value]);
-  var s = sugarFromD(d); $('fSugar').value = s == null ? '' : s;
-  if (!F.abvManual) { var a = estAbv(og, d); $('fAbv').value = a == null ? '' : a; }
-  $('fAbv').classList.toggle('auto', !F.abvManual);
-  $('rAbv').hidden = !F.abvManual;
-  $('calcHint').textContent = og != null
-    ? 'Sugar and ABV are calculated from the density and the batch’s starting density (' + fmtD(og) + '). You can type over ABV.'
-    : 'Sugar is calculated from the density. Add a starting density to this batch to get ABV too.';
-}
-$('fSG').addEventListener('input', syncCalc);
-$('fBatch').addEventListener('change', function () { F.batchId = this.value; syncCalc(); });
-$('fAbv').addEventListener('input', function () { F.abvManual = this.value !== ''; syncCalc(); });
-$('rAbv').onclick = function () { F.abvManual = false; syncCalc(); };
 
 var X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 function renderFormPhotos() {
@@ -638,7 +807,7 @@ function renderFormPhotos() {
   h += '<button type="button" class="add-ph" id="addPhoto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Add photo</button>';
   $('fPhotos').innerHTML = h;
   $('saveEntry').disabled = F.uploads.length > 0;
-  $('saveEntry').textContent = F.uploads.length ? 'Uploading…' : 'Save';
+  $('saveEntry').textContent = F.uploads.length ? 'Uploading…' : (F.sel.length > 1 ? 'Save (' + F.sel.length + ')' : 'Save');
 }
 $('fPhotos').addEventListener('click', function (ev) {
   if (ev.target.closest('#addPhoto')) { $('fFile').click(); return; }
@@ -699,25 +868,31 @@ function uploadPhoto(file) {
 
 $('saveEntry').onclick = function () {
   if (F.uploads.length) return;
-  var batchId = $('fBatch').value;
-  if (!batchId || !S.batches[batchId]) { toast('Choose or create a batch first'); return; }
+  var sel = F.sel.filter(function (id) { return S.batches[id]; });
+  if (!sel.length) { toast('Choose or create at least one batch'); return; }
   if (!$('fDate').value) { toast('Pick a date'); return; }
+  var readings = {}, bad = null;
+  sel.forEach(function (id) {
+    var r = F.read[id] || {}, d = dens(r.sg), og = batchOG(S.batches[id]);
+    if (d != null && (d < 0.98 || d > 1.2)) bad = batchName(id);
+    var abv = r.abvManual ? num(r.abv) : estAbv(og, d);
+    readings[id] = { sg: d, sugar: sugarFromD(d), abv: abv, abvManual: !!(r.abvManual && abv != null) };
+  });
+  if (bad) { toast('Density for ' + bad + ' looks off — use 1.045 or 1045'); return; }
   var data = {
     date: $('fDate').value,
     time: $('fTime').value || '',
-    batchId: batchId,
+    batchIds: sel,
+    batchId: sel[0],
+    readings: readings,
     stage: F.stage || '',
-    sg: dens($('fSG').value),
     temp: num($('fTemp').value),
-    sugar: sugarFromD(dens($('fSG').value)),
-    abv: num($('fAbv').value),
-    abvManual: !!F.abvManual,
-    sugarManual: null,
     notes: $('fNotes').value.trim(),
     photos: F.photos,
+    /* clear single-batch fields from older entries */
+    sg: null, sugar: null, abv: null, abvManual: null, sugarManual: null,
     updated: firebase.database.ServerValue.TIMESTAMP
   };
-  if (data.sg != null && (data.sg < 0.98 || data.sg > 1.2)) { toast('Density looks off — use 1.045 or 1045'); return; }
   var p, isNew = !F.id;
   if (isNew) { data.created = firebase.database.ServerValue.TIMESTAMP; p = db.ref('entries').push(data); }
   else p = db.ref('entries/' + F.id).update(data);
@@ -736,7 +911,7 @@ var B = null; // batch form state
 
 function renderBatchList() {
   var ids = sortedBatchIds();
-  var counts = {}; entryList().forEach(function (e) { counts[e.batchId] = (counts[e.batchId] || 0) + 1; });
+  var counts = {}; entryList().forEach(function (e) { eBatches(e).forEach(function (bid) { counts[bid] = (counts[bid] || 0) + 1; }); });
   if (!ids.length) { $('batchList').innerHTML = '<div class="empty">No batches yet. Tap New to add your first.</div>'; return; }
   $('batchList').innerHTML = ids.map(function (id) {
     var b = S.batches[id], meta = [];
@@ -752,7 +927,6 @@ function renderBatchList() {
 $('btnBatches').onclick = function () { renderBatchList(); openScreen('sBatches'); };
 $('newBatchBtn').onclick = function () { openBatch(null, false); };
 $('batchList').addEventListener('click', function (ev) { var r = ev.target.closest('.batch-row'); if (r) openBatch(r.getAttribute('data-b'), false); });
-$('fAddBatch').onclick = function () { openBatch(null, true); };
 
 function openBatch(id, fromForm) {
   var b = id ? S.batches[id] : null;
@@ -829,14 +1003,18 @@ $('saveBatch').onclick = function () {
   var newId = ref.key;
   p.then(function () {
     closeScreen('sBatch');
-    if (fromForm && F) { F.batchId = newId; refreshBatchSelect(newId); syncCalc(); }
+    if (fromForm && F) {
+      if (F.sel.indexOf(newId) < 0) F.sel.push(newId);
+      if (!F.read[newId]) F.read[newId] = { sg: '', abv: '', abvManual: false };
+      renderFormBatches(); renderReadings();
+    }
     toast(isNew ? 'Batch created' : 'Batch saved');
   }).catch(function (e) { toast('Could not save: ' + e.message); });
 };
 
 $('deleteBatch').onclick = function () {
   var id = B && B.id; if (!id) return;
-  var n = entryList().filter(function (e) { return e.batchId === id; }).length;
+  var n = entryList().filter(function (e) { return hasBatch(e, id); }).length;
   if (n) { alert('This batch has ' + n + (n === 1 ? ' entry' : ' entries') + '. Delete or move them to another batch first.'); return; }
   if (!confirm('Delete batch "' + S.batches[id].name + '"?')) return;
   db.ref('batches/' + id).remove().then(function () { closeScreen('sBatch'); toast('Batch deleted'); }).catch(function (e) { toast('Could not delete: ' + e.message); });
@@ -851,6 +1029,13 @@ document.addEventListener('keydown', function (ev) {
 });
 
 renderAll();
+/* Live data from Firebase (set up last, so everything above is ready) */
+db.ref('batches').on('value', function (s) { S.batches = s.val() || {}; renderAll(); }, dbErr);
+db.ref('entries').on('value', function (s) { S.entries = s.val() || {}; renderAll(); }, dbErr);
+db.ref('.info/connected').on('value', function (s) {
+  var c = $('conn'); var on = !!s.val();
+  c.classList.toggle('on', on); c.title = on ? 'Connected' : 'Offline'; c.setAttribute('aria-label', on ? 'Connected' : 'Offline');
+});
 </script>
 </body>
 </html>
